@@ -1,0 +1,4 @@
+a0.1: just a player with double jump
+a0.2: added bullet
+a0.3: added spike and blood emitting, fixed player mask
+a0.4: added music and sounds, finished player death
