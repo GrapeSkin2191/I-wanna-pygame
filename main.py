@@ -3,8 +3,8 @@ import sys
 import pygame
 
 from scripts.sprites import PlayerSprite, SpikeManage
-from scripts.utils import load_image, load_images, load_sound, Animation
-
+from scripts.tilemap import TileMap
+from scripts.utils import load_image, load_images, load_sound
 
 SIZE = (800, 608)
 FPS = 60
@@ -20,7 +20,7 @@ class Game:
         self.fps = fps
         self.screen = pygame.display.set_mode(self.size, pygame.DOUBLEBUF | pygame.RESIZABLE | pygame.SCALED)
         self.clock = pygame.time.Clock()
-        self.full_screen = False
+        self.time = 0
 
         self.assets = {
             'maskPlayer': load_image('player/maskPlayer.png'),
@@ -40,11 +40,18 @@ class Game:
             'shoot': load_sound('sndShoot.wav')
         }
 
-        self.spike_manage = SpikeManage(self)
-        self.player = PlayerSprite((self.screen.get_width() // 2, self.screen.get_height() // 2), self)
+        self.tilemap = None
+        self.spike_manage = None
+        self.player = None
 
-    def load_level(self):
-        pass
+    def load_level(self, map_id):
+        self.tilemap.load('data/maps/' + str(map_id) + '.json')
+
+        self.spike_manage = SpikeManage(self)
+        for spike in self.tilemap.extract('spike'):
+            self.spike_manage.create(spike['pos'], spike['flip'])
+
+        self.player = PlayerSprite(self, self.tilemap.player_pos)
 
     def stop(self):
         pygame.quit()
@@ -57,13 +64,12 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.stop()
-                elif event.key == pygame.K_F2:
-                    Game(self.size, self.fps).run()
-                    self.stop()
+                elif event.key == pygame.K_F2:  # TODO may cause problems
+                    self.run()
                 elif event.key == pygame.K_F4:
                     pygame.display.toggle_fullscreen()
                 elif event.key == pygame.K_q:
-                    self.player.kill()
+                    self.player.die()
                 elif event.key == pygame.K_z:
                     self.player.shoot()
                 elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
@@ -73,10 +79,16 @@ class Game:
                     self.player.vjump()
 
     def run(self):
+        self.time = 0
+        self.tilemap = TileMap(self)
+
+        self.load_level('Stage01')
+
         pygame.mixer.music.load('data/sounds/bgm2014.ogg')
         pygame.mixer.music.set_volume(0.5)
         pygame.mixer.music.play(-1)
         while True:
+            self.time += 1
             self.check_event()
 
             self.screen.fill((200, 255, 255))

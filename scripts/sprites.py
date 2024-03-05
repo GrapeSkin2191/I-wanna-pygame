@@ -24,10 +24,10 @@ class AnimatedSprite:
 
 
 class SpikeSprite(pygame.sprite.Sprite):
-    def __init__(self, game, top_left):
+    def __init__(self, game, top_left, flip):
         super().__init__()
         self.game = game
-        self.image = self.game.assets['spike']
+        self.image = pygame.transform.flip(self.game.assets['spike'], flip[0], flip[1])
         self.rect = self.image.get_rect()
         self.rect.topleft = top_left
         self.mask = pygame.mask.from_surface(self.image)
@@ -38,11 +38,8 @@ class SpikeManage:
         self.game = game
         self.player_killer_group = pygame.sprite.Group()
 
-        for i in range(0, 800, 32):
-            self.generate(i, 0)
-
-    def generate(self, x: int, y: int):
-        SpikeSprite(self.game, (x, y)).add(self.player_killer_group)
+    def create(self, top_left, flip):
+        SpikeSprite(self.game, top_left, flip).add(self.player_killer_group)
 
     def update(self):
         self.player_killer_group.update()
@@ -57,8 +54,10 @@ class Blood(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = center
         self.gravity = random.uniform(0.1, 0.3)
-        self.hspeed = random.uniform(-6.0, 6.0)
-        self.vspeed = (1 if random.random() >= 0.5 else -1) * math.sqrt(36 - math.pow(self.hspeed, 2))
+        speed = random.uniform(3, 6)
+        angle = random.uniform(0, math.pi * 2)
+        self.hspeed = math.cos(angle) * speed
+        self.vspeed = math.sin(angle) * speed
 
     def update(self):
         self.vspeed += self.gravity
@@ -78,42 +77,43 @@ class Blood(pygame.sprite.Sprite):
 
 
 class BloodManage:
-    def __init__(self, game, player):
+    def __init__(self, game, center, life):
         self.game = game
-        self.player = player
+        self.center = center
         self.blood_group = pygame.sprite.Group()
-        self.death_time = 0
+        self.death_time = self.game.time + life
 
     def update(self):
-        if time.time() <= self.death_time:
+        if self.game.time <= self.death_time:
             for _ in range(40):
-                Blood(self.game, self.player.rect.center).add(self.blood_group)
+                Blood(self.game, self.center).add(self.blood_group)
         self.blood_group.update()
         self.blood_group.draw(self.game.screen)
 
 
 class BulletSprite(pygame.sprite.Sprite):
-    def __init__(self, game, player):
+    def __init__(self, game, center, direction):
         super().__init__()
         self.game = game
         self.images = self.game.assets['bullet']
         self.image = self.images[0]
         self.img_duration = 5
         self.frame = 0
-
         self.rect = self.image.get_rect()
-        self.rect.center = player.rect.center
+        self.rect.center = center
 
-        self.hspeed = (-1 if player.flip else 1) * 15
-        self.death_time = time.time() + 1
+        self.hspeed = direction * 14
+        self.life = 0
+        self.death_time = self.game.time + 42
 
     def update_animation(self):
         self.frame = (self.frame + 1) % (self.img_duration * len(self.images))
         self.image = self.images[int(self.frame / self.img_duration)]
 
     def update(self):
+        self.life += 1
         if (self.rect.left + self.hspeed < 0 or self.rect.right + self.hspeed > self.game.screen.get_width() or
-                time.time() > self.death_time):
+                self.game.time > self.death_time):
             self.kill()
         self.rect = self.rect.move(self.hspeed, 0)
         self.update_animation()
@@ -129,7 +129,8 @@ class BulletManage:
     def generate(self):
         if len(self.bullet_group) < self.limit:
             self.game.sfx['shoot'].play()
-            BulletSprite(self.game, self.player).add(self.bullet_group)
+            (BulletSprite(self.game, self.player.rect.center, (-1 if self.player.flip else 1))
+             .add(self.bullet_group))
 
     def update(self):
         self.bullet_group.update()
@@ -137,14 +138,14 @@ class BulletManage:
 
 
 class PlayerSprite(AnimatedSprite):
-    def __init__(self, center, game):
+    def __init__(self, game, top_left):
         super().__init__(game, 'player', 7)
         self.rect = self.game.assets['maskPlayer'].get_rect()
         self.mask = pygame.mask.from_surface(self.game.assets['maskPlayer'])
 
         self.set_action('idle')
 
-        self.rect.center = center
+        self.rect.topleft = top_left
         self.spike_manage = self.game.spike_manage
 
         self.hspeed = 0
@@ -157,14 +158,14 @@ class PlayerSprite(AnimatedSprite):
         self.max_vspeed = 9
 
         self.bullet_manage = BulletManage(self.game, self)
+        self.blood_manage = None
 
-        self.blood_manage = BloodManage(self.game, self)
         self.game_over_show = 0
         self.dead = False
 
-    def kill(self):
-        self.game_over_show = time.time() + 0.75
-        self.blood_manage.death_time = time.time() + 0.4
+    def die(self):
+        self.blood_manage = BloodManage(self.game, self.rect.center, 20)
+        self.game_over_show = self.game.time + 30
         self.dead = True
         pygame.mixer.music.load('data/sounds/sndOnDeath.mp3')
         pygame.mixer.music.set_volume(0.5)
@@ -184,18 +185,20 @@ class PlayerSprite(AnimatedSprite):
             self.game.sfx['djump'].play()
 
     def vjump(self):
-        self.vspeed *= 0.45
+        if self.vspeed < 0.05:
+            self.vspeed *= 0.45
 
     def update(self):
         if self.dead:
             self.blood_manage.update()
-            if time.time() > self.game_over_show:
+            self.bullet_manage.update()
+            if self.game.time > self.game_over_show:
                 self.game.screen.blit(self.game.assets['game_over'], (0, 140))
             return
 
         # collision with player killers
         if pygame.sprite.spritecollideany(self, self.spike_manage.player_killer_group, pygame.sprite.collide_mask):
-            self.kill()
+            self.die()
 
         # get left & right key input
         key_pressed = pygame.key.get_pressed()
