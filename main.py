@@ -2,9 +2,9 @@ import sys
 
 import pygame
 
-from scripts.sprites import PlayerSprite, SpikeManage
+from scripts.sprites import PlayerSprite, SpikeManage, BlockManage
 from scripts.tilemap import TileMap
-from scripts.utils import load_image, load_images, load_sound
+from scripts.utils import load_image, load_images, load_images_to_dict, load_sound
 
 SIZE = (800, 608)
 FPS = 60
@@ -29,9 +29,10 @@ class Game:
             'player/jump': load_images('player/jump'),
             'player/run': load_images('player/run'),
             'bullet': load_images('bullet'),
-            'game_over': load_image('sprGAMEOVER.png'),
-            'spike': load_image('sprSpike.png'),
-            'blood': load_images('blood')
+            'game_over': load_image('GAMEOVER.png'),
+            'spike': load_image('spike.png'),
+            'blood': load_images('blood'),
+            'block': load_images_to_dict('block')
         }
 
         self.sfx = {
@@ -41,11 +42,16 @@ class Game:
         }
 
         self.tilemap = None
+        self.block_manage = None
         self.spike_manage = None
         self.player = None
 
     def load_level(self, map_id):
         self.tilemap.load('data/maps/' + str(map_id) + '.json')
+
+        self.block_manage = BlockManage(self)
+        for block in self.tilemap.extract('block', True):
+            self.block_manage.create(block['variant'], block['pos'], block['flip'])
 
         self.spike_manage = SpikeManage(self)
         for spike in self.tilemap.extract('spike'):
@@ -93,6 +99,7 @@ class Game:
 
             self.screen.fill((200, 255, 255))
             self.spike_manage.update()
+            self.block_manage.update()
             self.player.update()
 
             pygame.display.flip()

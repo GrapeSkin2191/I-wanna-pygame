@@ -1,6 +1,5 @@
 import math
 import random
-import time
 
 import pygame
 
@@ -21,6 +20,28 @@ class AnimatedSprite:
     def update_animation(self):
         self.frame = (self.frame + 1) % (self.img_duration * len(self.images))
         self.image = self.images[int(self.frame / self.img_duration)]
+
+
+class Block(pygame.sprite.Sprite):
+    def __init__(self, game, variant, top_left, flip):
+        super().__init__()
+        self.game = game
+        self.image = pygame.transform.flip(self.game.assets['block'][variant], flip[0], flip[1])
+        self.rect = self.image.get_rect()
+        self.rect.topleft = top_left
+
+
+class BlockManage:
+    def __init__(self, game):
+        self.game = game
+        self.block_group = pygame.sprite.Group()
+
+    def create(self, variant, top_left, flip):
+        Block(self.game, variant, top_left, flip).add(self.block_group)
+
+    def update(self):
+        self.block_group.update()
+        self.block_group.draw(self.game.screen)
 
 
 class SpikeSprite(pygame.sprite.Sprite):
@@ -96,10 +117,9 @@ class BulletSprite(pygame.sprite.Sprite):
         super().__init__()
         self.game = game
         self.images = self.game.assets['bullet']
-        self.image = self.images[0]
         self.img_duration = 5
         self.frame = 0
-        self.rect = self.image.get_rect()
+        self.rect = self.images[0].get_rect()
         self.rect.center = center
 
         self.hspeed = direction * 14
@@ -146,16 +166,17 @@ class PlayerSprite(AnimatedSprite):
         self.set_action('idle')
 
         self.rect.topleft = top_left
-        self.spike_manage = self.game.spike_manage
 
         self.hspeed = 0
         self.vspeed = 0
-        self.jump_speed = 8.5
-        self.djump_speed = 7
-        self.djump = True
+        self.jump_speed = 7
+        self.djump_speed = 6
+        self.has_djump = False
         self.gravity = 0.3
         self.max_hspeed = 2
         self.max_vspeed = 9
+        self.collisions = {'up': False, 'down': False, 'right': False, 'left': False}
+        self.air_time = 0
 
         self.bullet_manage = BulletManage(self.game, self)
         self.blood_manage = None
@@ -175,17 +196,17 @@ class PlayerSprite(AnimatedSprite):
         self.bullet_manage.generate()
 
     def jump(self):
-        if self.rect.bottom >= self.game.screen.get_height():
+        if self.air_time <= 2:
             self.vspeed = -self.jump_speed
-            self.djump = True
+            self.has_djump = True
             self.game.sfx['jump'].play()
-        elif self.djump:
+        elif self.has_djump:
             self.vspeed = -self.djump_speed
-            # self.djump = False  # FIXME double jump
+            self.has_djump = False  # FIXME double jump
             self.game.sfx['djump'].play()
 
     def vjump(self):
-        if self.vspeed < 0.05:
+        if self.vspeed < -0.05:
             self.vspeed *= 0.45
 
     def update(self):
@@ -196,11 +217,39 @@ class PlayerSprite(AnimatedSprite):
                 self.game.screen.blit(self.game.assets['game_over'], (0, 140))
             return
 
-        # collision with player killers
-        if pygame.sprite.spritecollideany(self, self.spike_manage.player_killer_group, pygame.sprite.collide_mask):
+        self.collisions = {'up': False, 'down': False, 'right': False, 'left': False}
+
+        self.rect.x += self.hspeed
+        entity_rect = self.rect.copy()
+        for rect in self.game.tilemap.physics_rects_around(self.rect.center):
+            if entity_rect.colliderect(rect):
+                if self.hspeed > 0:
+                    entity_rect.right = rect.left
+                    self.collisions['right'] = True
+                if self.hspeed < 0:
+                    entity_rect.left = rect.right
+                    self.collisions['left'] = True
+                self.rect.x = entity_rect.x
+        if self.collisions['left'] or self.collisions['right']:
+            self.hspeed = 0
+
+        self.rect.y += self.vspeed
+        entity_rect = self.rect.copy()
+        for rect in self.game.tilemap.physics_rects_around(self.rect.center):
+            if entity_rect.colliderect(rect):
+                if self.vspeed > 0:
+                    entity_rect.bottom = rect.top
+                    self.collisions['down'] = True
+                if self.vspeed < 0:
+                    entity_rect.top = rect.bottom
+                    self.collisions['up'] = True
+                self.rect.y = entity_rect.y
+        if self.collisions['up'] or self.collisions['down']:
+            self.vspeed = 0
+
+        if pygame.sprite.spritecollideany(self, self.game.spike_manage.player_killer_group, pygame.sprite.collide_mask):
             self.die()
 
-        # get left & right key input
         key_pressed = pygame.key.get_pressed()
         if key_pressed[pygame.K_RIGHT]:
             self.hspeed = self.max_hspeed
@@ -214,26 +263,23 @@ class PlayerSprite(AnimatedSprite):
             self.hspeed = 0
             self.set_action('idle')
 
-        # gravity
+        if self.collisions['down']:
+            self.air_time = 0
+        else:
+            self.air_time += 1
+
         self.vspeed += self.gravity
 
-        # collision with room edges & max vspeed limit
-        if self.rect.left + self.hspeed < 0 or self.rect.right + self.hspeed > self.game.screen.get_width():
-            self.hspeed = 0
         if abs(self.vspeed) > self.max_vspeed:
             self.vspeed = (self.vspeed > 0) * self.max_vspeed
-        if self.rect.bottom + self.vspeed > self.game.screen.get_height():
-            self.vspeed = self.game.screen.get_height() - self.rect.bottom
 
-        if self.rect.bottom < self.game.screen.get_height():
+        if self.air_time > 2:
             if self.vspeed < -0.05:
                 self.set_action('jump')
-            if self.vspeed > 0.05:
+            elif self.vspeed > 0.05:
                 self.set_action('fall')
-
-        # move the player
-        self.rect = self.rect.move(self.hspeed, self.vspeed)
 
         self.bullet_manage.update()
         self.update_animation()
-        self.game.screen.blit(pygame.transform.flip(self.image, self.flip, False), self.rect.move(-10, -11))
+        self.game.screen.blit(pygame.transform.flip(self.image, self.flip, False), self.rect.move(-11, -11))
+        # self.game.screen.blit(self.game.assets['maskPlayer'], self.rect)
