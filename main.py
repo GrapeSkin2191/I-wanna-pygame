@@ -14,7 +14,7 @@ class Game:
     def __init__(self, size: tuple[int, int], fps: int):
         pygame.init()
         pygame.display.set_caption('I wanna pygame')
-        pygame.display.set_icon(pygame.image.load('fruit32.ico'))
+        pygame.display.set_icon(pygame.image.load('data/images/fruit32.ico'))
 
         self.size = size
         self.fps = fps
