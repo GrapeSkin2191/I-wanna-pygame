@@ -9,11 +9,14 @@ NEIGHBOR_OFFSETS = [(-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0), (0, 0), (-1, 1)
 class TileMap:
     def __init__(self, game):
         self.game = game
-        self.player_pos = ()
+        self.map_type = ''
+        self.background = (0, 0, 0)
         self.solid_tile = {}
         self.tile = {}
         self.tile_size = 0
         self.offgrid_tiles = []
+        self.player_pos = ()
+        self.room_to = ''
 
     def tiles_around(self, pos, solid=True):
         tile_dict = self.solid_tile if solid else self.tile
@@ -74,8 +77,28 @@ class TileMap:
         map_data = json.load(f)
         f.close()
 
-        self.player_pos = map_data['player']
+        self.map_type = map_data['map_type']
+        self.background = map_data['background']
+        self.tile_size = map_data['tile_size']
         self.solid_tile = map_data['solid_tile']
         self.tile = map_data['tile']
-        self.tile_size = map_data['tile_size']
         self.offgrid_tiles = map_data['offgrid']
+        if self.map_type == 'title':
+            self.room_to = map_data['room_to']
+        elif self.map_type == 'select':
+            pass
+        else:
+            self.player_pos = map_data['player']
+
+    def save(self, path: str):
+        f = open(path, 'w')
+        json.dump({
+            'map_type': self.map_type,
+            'background': self.background,
+            'player': self.player_pos,
+            'tile_size': self.tile_size,
+            'solid_tile': self.solid_tile,
+            'tile': self.tile,
+            'offgrid': self.offgrid_tiles
+        }, f)
+        f.close()

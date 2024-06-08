@@ -40,7 +40,6 @@ class Game:
             'djump': load_sound('sndDjump.wav'),
             'shoot': load_sound('sndShoot.wav')
         }
-
         self.tilemap = None
         self.block_manage = None
         self.spike_manage = None
@@ -57,7 +56,8 @@ class Game:
         for spike in self.tilemap.extract('spike'):
             self.spike_manage.create(spike['pos'], spike['flip'])
 
-        self.player = PlayerSprite(self, self.tilemap.player_pos)
+        if self.tilemap.map_type == 'normal':
+            self.player = PlayerSprite(self, self.tilemap.player_pos)
 
     def stop(self):
         pygame.quit()
@@ -70,8 +70,8 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.stop()
-                elif event.key == pygame.K_F2:  # TODO may cause problems
-                    self.run()
+                # elif event.key == pygame.K_F2:
+                #     self.run()
                 elif event.key == pygame.K_F4:
                     pygame.display.toggle_fullscreen()
                 elif event.key == pygame.K_q:
@@ -79,7 +79,10 @@ class Game:
                 elif event.key == pygame.K_z:
                     self.player.shoot()
                 elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
-                    self.player.jump()
+                    if self.tilemap.map_type == 'title':
+                        self.load_level(self.tilemap.room_to)
+                    else:
+                        self.player.jump()
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                     self.player.vjump()
@@ -88,7 +91,7 @@ class Game:
         self.time = 0
         self.tilemap = TileMap(self)
 
-        self.load_level('Stage01')
+        self.load_level('title')
 
         pygame.mixer.music.load('data/sounds/bgm2014.ogg')
         pygame.mixer.music.set_volume(0.5)
@@ -97,10 +100,11 @@ class Game:
             self.time += 1
             self.check_event()
 
-            self.screen.fill((200, 255, 255))
+            self.screen.fill(self.tilemap.background)
             self.spike_manage.update()
             self.block_manage.update()
-            self.player.update()
+            if self.player is not None:
+                self.player.update()
 
             pygame.display.flip()
             self.clock.tick(self.fps)

@@ -202,7 +202,7 @@ class PlayerSprite(AnimatedSprite):
             self.game.sfx['jump'].play()
         elif self.has_djump:
             self.vspeed = -self.djump_speed
-            self.has_djump = False  # FIXME double jump
+            # self.has_djump = False  # FIXME double jump
             self.game.sfx['djump'].play()
 
     def vjump(self):
